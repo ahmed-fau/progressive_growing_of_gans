@@ -509,6 +509,8 @@ def D_paper(
     use_layernorm   = False,
     **kwargs):
 
+    # TODO: use_layernorm=False
+
     R = int(np.log2(resolution))
     assert resolution == 2**R and resolution >= 4
     cur_lod = theano.shared(np.float32(0.0))
