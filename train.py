@@ -13,6 +13,7 @@ import shutil
 import operator
 import numpy as np
 import scipy.ndimage
+from scipy.io.wavfile import write as wavwrite
 
 import misc
 misc.init_output_logging()
@@ -126,11 +127,12 @@ def train_gan(
     # Setup snapshot image grid.
     if image_grid_type == 'default':
         if image_grid_size is None:
-            w, h = G.output_shape[3], G.output_shape[2]
-            image_grid_size = np.clip(1920 / w, 3, 16), np.clip(1080 / h, 2, 16)
-        example_real_images, snapshot_fake_labels = training_set.get_random_minibatch(np.prod(image_grid_size), labels=True)
-        snapshot_fake_latents = random_latents(np.prod(image_grid_size), G.input_shape)
+            t = G.output_shape[2]
+            num_audio_examples = 8
+        example_real_images, snapshot_fake_labels = training_set.get_random_minibatch(num_audio_examples, labels=True)
+        snapshot_fake_latents = random_latents(num_audio_examples, G.input_shape)
     elif image_grid_type == 'category':
+        assert False
         W = training_set.labels.shape[1]
         H = W if image_grid_size is None else image_grid_size[1]
         image_grid_size = W, H
@@ -225,8 +227,8 @@ def train_gan(
                 real_images_expr = T.cast(real_images_expr, 'float32') + epsilon_noise # match original implementation of Improved Wasserstein
             real_images_expr = misc.adjust_dynamic_range(real_images_expr, drange_orig, drange_net)
             if min_lod > 0: # compensate for shrink_based_on_lod
-                real_images_expr = T.extra_ops.repeat(real_images_expr, 2**min_lod, axis=2)
-                real_images_expr = T.extra_ops.repeat(real_images_expr, 2**min_lod, axis=3)
+                real_images_expr = T.extra_ops.repeat(real_images_expr, 4**min_lod, axis=2)
+                #real_images_expr = T.extra_ops.repeat(real_images_expr, 2**min_lod, axis=3)
 
             # Optimize loss.
             G_loss, D_loss, real_scores_out, fake_scores_out = evaluate_loss(G, D, min_lod, max_lod, real_images_expr, real_labels_var, fake_latents_var, fake_labels_var, **config.loss)
@@ -325,7 +327,7 @@ def evaluate_loss(
     fake_images_out = G.eval_nd(fake_latents_in, fake_labels_in, min_lod=min_lod, max_lod=max_lod, ignore_unused_inputs=True)
 
     # Mix reals and fakes through linear crossfade.
-    mixing_factors = rnd.uniform((real_images_in.shape[0], 1, 1, 1), dtype='float32')
+    mixing_factors = rnd.uniform((real_images_in.shape[0], 1, 1), dtype='float32')
     mixed_images_out = real_images_in * (1 - mixing_factors) + fake_images_out * mixing_factors
 
     # Evaluate discriminator.
@@ -335,7 +337,7 @@ def evaluate_loss(
 
     if type == 'iwass': # Improved Wasserstein
         mixed_grads = theano.grad(Tsum(mixed_scores_out), mixed_images_out)
-        mixed_norms = T.sqrt(Tsum(T.square(mixed_grads), axis=(1,2,3)))
+        mixed_norms = T.sqrt(Tsum(T.square(mixed_grads), axis=(1,2)))
         G_loss = -Tmean(fake_scores_out)
         D_loss = (Tmean(fake_scores_out) - Tmean(real_scores_out)) + Tmean(T.square(mixed_norms - iwass_target)) * iwass_lambda / (iwass_target**2)
         D_loss += L2(real_scores_out, 0) * iwass_epsilon # additional penalty term to keep the scores from drifting too far from zero

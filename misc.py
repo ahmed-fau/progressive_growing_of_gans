@@ -15,6 +15,7 @@ import cPickle
 import numpy as np
 from collections import OrderedDict 
 import PIL.Image
+from scipy.io.wavfile import write as wavwrite
 
 #----------------------------------------------------------------------------
 # Convenience wrappers for pickle.
@@ -71,7 +72,23 @@ def save_image(image, filename, drange=[0,1]):
     convert_to_pil_image(image, drange).save(filename)
 
 def save_image_grid(images, filename, drange=[0,1], grid_size=None):
-    convert_to_pil_image(create_image_grid(images, grid_size), drange).save(filename)
+    if drange == [-32768, 32767]:
+        pass
+    elif drange == [-1, 1]:
+        images = images.astype(np.float32)
+        images = adjust_dynamic_range(images, drange, [-32768, 32767])
+        images = np.clip(images, -32768, 32767)
+        images = images.astype(np.int16)
+    else:
+        raise NotImplementedError()
+
+    assert images.dtype == np.int16
+
+    images = np.reshape(images, [-1, 16384])
+    images = np.pad(images, [[0, 0], [0, 4096]], 'constant')
+    images = np.reshape(images, [-1])
+
+    wavwrite(filename.replace('.png', '.wav'), 16000, images)
 
 #----------------------------------------------------------------------------
 # Training utils.

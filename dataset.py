@@ -138,7 +138,14 @@ class Dataset:
             t = data.reshape(n, c, h/2, 2, w/2, 2).mean((3, 5)).repeat(2, 2).repeat(2, 3)
             data = (data + (t - data) * (lod - lod_int)).astype(self.dtype)
         if not shrink_based_on_lod and lod_int != 0:
+            assert False
             data = data.repeat(2 ** lod_int, 2).repeat(2 ** lod_int, 3)
+
+        dim = data.shape[2]
+        data = data.reshape(-1, 1, dim * dim)
+        #import scipy.io.wavfile
+        #for i in xrange(8):
+        #  scipy.io.wavfile.write('test{}.wav'.format(i), 16000, data[i, 0])
 
         # Look up labels.
         if labels:
