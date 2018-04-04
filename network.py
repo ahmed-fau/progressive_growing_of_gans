@@ -533,7 +533,7 @@ def D_paper(
         net = MinibatchStatConcatLayer(net, name='Dstat', func=globals()[mbstat_func], averaging=mbstat_avg)
 
     net = LN(WS(Conv1DLayer(GD(net), name='D1b', num_filters=nf(1), filter_size=9, pad=4, nonlinearity=lrelu, W=ilrelu)))
-    net = LN(WS(Conv1DLayer(GD(net), name='D1a', num_filters=nf(0), filter_size=9, pad=4, nonlinearity=lrelu, W=ilrelu)))
+    net = LN(WS(Conv1DLayer(GD(net), name='D1a', num_filters=nf(0), filter_size=16, pad=0, nonlinearity=lrelu, W=ilrelu)))
 
     if mbdisc_kernels:
         import minibatch_discrimination
