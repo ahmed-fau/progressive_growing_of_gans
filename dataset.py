@@ -87,8 +87,8 @@ class Dataset:
         self.h5_file.close()
 
     def get_dynamic_range(self): # [min, max]
-        assert self.dtype == np.uint8
-        return [0, 255]
+        assert self.dtype == np.int16
+        return [-32768, 32767]
 
     def get_images(self):
         return self.h5_lods[0][:self.shape[0]]
@@ -133,6 +133,7 @@ class Dataset:
 
         # Apply fractional LOD.
         if lod != lod_int:
+            assert False # CHRIS: hopefully this doesn't happen for square datasets
             n, c, h, w = data.shape
             t = data.reshape(n, c, h/2, 2, w/2, 2).mean((3, 5)).repeat(2, 2).repeat(2, 3)
             data = (data + (t - data) * (lod - lod_int)).astype(self.dtype)
