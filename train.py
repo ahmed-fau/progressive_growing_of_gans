@@ -126,7 +126,6 @@ def train_gan(
     # Setup snapshot image grid.
     if image_grid_type == 'default':
         if image_grid_size is None:
-            t = G.output_shape[2]
             num_audio_examples = 8
         example_real_images, snapshot_fake_labels = training_set.get_random_minibatch(num_audio_examples, labels=True)
         snapshot_fake_latents = random_latents(num_audio_examples, G.input_shape)
