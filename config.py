@@ -29,6 +29,8 @@ theano_flags['dnn.conv.algo_fwd']           = 'small'           # Gives the best
 theano_flags['dnn.conv.algo_bwd_filter']    = 'deterministic'   # Necessary for deterministic training runs.
 theano_flags['dnn.conv.algo_bwd_data']      = 'deterministic'   # Necessary for deterministic training runs.
 theano_flags['nvcc.fastmath']               = 'True'            # Prefer speed over precision.
+#theano_flags['optimizer'] = 'fast_compile'
+#theano_flags['exception_verbosity'] = 'high'
 
 #----------------------------------------------------------------------------
 # Baseline configuration from
