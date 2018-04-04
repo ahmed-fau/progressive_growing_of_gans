@@ -34,13 +34,13 @@ class HDF5Exporter:
         self.buffer_sizes = []
         for lod in xrange(rlog2, -1, -1):
             r = 2 ** lod; c = channels
-            bytes_per_item = c * r * 2
+            bytes_per_item = c * (r ** 2)
             chunk_size = int(np.ceil(128.0 / bytes_per_item))
             buffer_size = int(np.ceil(512.0 * np.exp2(20) / bytes_per_item))
-            lod = self.h5_file.create_dataset('data%d' % (r), shape=(0,c,r), dtype=np.int16,
-                maxshape=(None,c,r), chunks=(chunk_size,c,r), compression='gzip', compression_opts=4)
+            lod = self.h5_file.create_dataset('data%dx%d' % (r,r), shape=(0,c,r,r), dtype=np.int16,
+                maxshape=(None,c,r,r), chunks=(chunk_size,c,r,r), compression='gzip', compression_opts=4)
             self.h5_lods.append(lod)
-            self.buffers.append(np.zeros((buffer_size,c,r), dtype=np.int16))
+            self.buffers.append(np.zeros((buffer_size,c,r,r), dtype=np.int16))
             self.buffer_sizes.append(0)
 
     def close(self):
@@ -49,16 +49,17 @@ class HDF5Exporter:
         self.h5_file.close()
 
     def add_images(self, img):
-        #assert img.ndim == 4 and img.shape[1] == self.channels and img.shape[2] == img.shape[3]
-        #assert img.shape[2] >= self.resolution and img.shape[2] == 2 ** int(np.floor(np.log2(img.shape[2])))
-        # originally, img is (1, ch, h, w)
-        # now, img is (1, ch, t)
+        assert img.ndim == 4 and img.shape[1] == self.channels and img.shape[2] == img.shape[3]
+        assert img.shape[2] >= self.resolution and img.shape[2] == 2 ** int(np.floor(np.log2(img.shape[2])))
         for lod in xrange(len(self.h5_lods)):
             while img.shape[2] > self.resolution / (2 ** lod):
                 img = img.astype(np.float32)
-                # simple averaging filter... we should do better
-                img = (img[:, :, 0::2] + img[:, :, 1::2]) * 0.5
-            # non-linear rounding before clipping?!
+                dim = img.shape[-1]
+                wav = np.reshape(img, [dim * dim])
+                # This is a stupid averaging filter... we can do better if necessary
+                wav = (wav[0::4] + wav[1::4] + wav[2::4] + wav[3::4]) * 0.25
+                img = np.reshape(wav, [1, 1, dim // 2, dim // 2])
+            # Rounding before casting?!
             quant = np.int16(np.clip(np.round(img), -32768, 32767))
             ofs = 0
             while ofs < quant.shape[0]:
@@ -287,19 +288,19 @@ def create_custom(h5_filename, image_dir):
         return
 
     def load_wav(fp):
-      fs, wav = scipy.io.wavfile.read(fp)
-      assert fs == 16000
-      assert wav.ndim == 1
-      wav = wav[:16384]
-      if wav.shape[0] < 16384:
-        wav = np.pad(wav, [[0, 16384 - wav.shape[0]]], 'constant')
-      assert wav.shape[0] == 16384
-      return wav
+        fs, wav = scipy.io.wavfile.read(fp)
+        assert fs == 16000
+        assert wav.ndim == 1
+        wav = wav[:16384]
+        if wav.shape[0] < 16384:
+            wav = np.pad(wav, [[0, 16384 - wav.shape[0]]], 'constant')
+        assert wav.shape[0] == 16384
+        wav = np.reshape(wav, [128, 128])
+        return wav
 
     img = load_wav(image_filenames[0])
-    resolution = 16384
-    channels = 1
-    """
+    resolution = img.shape[0]
+    channels = img.shape[2] if img.ndim == 3 else 1
     if img.shape[1] != resolution:
         print 'Error: Input images must have the same width and height'
         return
@@ -308,16 +309,15 @@ def create_custom(h5_filename, image_dir):
         return
     if channels not in [1, 3]:
         print 'Error: Input images must be stored as RGB or grayscale'
-    """
     
     h5 = HDF5Exporter(h5_filename, resolution, channels)
     for idx in xrange(len(image_filenames)):
         print '%d / %d\r' % (idx, len(image_filenames)),
         img = load_wav(image_filenames[idx])
         if channels == 1:
-          img = np.reshape(img, [1, 16384]) #img = img[np.newaxis, :, :] # HW => CHW
+            img = img[np.newaxis, :, :] # HW => CHW
         else:
-            assert False #img = img.transpose(2, 0, 1) # HWC => CHW
+            img = img.transpose(2, 0, 1) # HWC => CHW
         h5.add_images(img[np.newaxis])
 
     print '%-40s\r' % 'Flushing data...',
