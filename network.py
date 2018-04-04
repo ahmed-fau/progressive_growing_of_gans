@@ -580,9 +580,6 @@ def G_mnist_mode_recovery(
     net = ReshapeLayer(name='Ginb', incoming=net, shape=[[0], [1], 1, 1])
     net = PN(BN(WS(Conv2DLayer(net, name='G1a', num_filters=64, filter_size=4, pad='full', nonlinearity=vlrelu, W=irelu))))
 
-    print net.output_shape
-    print '-' * 1000
-
     lods  = [net]
     for I in xrange(2, R): # I = 2, 3, ..., R-1
         net = Upscale1DLayer(net, name='G%dup' % I, scale_factor=2)
