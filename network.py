@@ -585,7 +585,7 @@ def G_mnist_mode_recovery(
 
     lods  = [net]
     for I in xrange(2, R): # I = 2, 3, ..., R-1
-        net = Upscale1DLayer(net, name='G%dup' % I, scale_factor=2)
+        net = Upscale2DLayer(net, name='G%dup' % I, scale_factor=2)
         net = PN(BN(WS(Conv2DLayer(net, name='G%da'  % I, num_filters=nf(I-1), filter_size=3, pad=1, nonlinearity=vlrelu, W=irelu))))
         lods += [net]
 
