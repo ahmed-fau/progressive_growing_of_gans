@@ -13,7 +13,6 @@ import shutil
 import operator
 import numpy as np
 import scipy.ndimage
-from scipy.io.wavfile import write as wavwrite
 
 import misc
 misc.init_output_logging()
