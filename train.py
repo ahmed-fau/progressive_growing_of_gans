@@ -12,7 +12,6 @@ import glob
 import shutil
 import operator
 import numpy as np
-setattr(np, 'log4', lambda x: np.log(x) / np.log(4))
 import scipy.ndimage
 
 import misc
@@ -91,7 +90,7 @@ def train_gan(
     minibatch_overrides     = {},
     rampup_kimg             = 40,
     rampdown_kimg           = 0,
-    lod_initial_resolution  = 16,
+    lod_initial_resolution  = 4,
     lod_training_kimg       = 400,
     lod_transition_kimg     = 400,
     total_kimg              = 10000,
@@ -104,7 +103,7 @@ def train_gan(
     drange_viz              = [-1,1],
     image_grid_size         = None,
     tick_kimg_default       = 50,
-    tick_kimg_overrides     = {1024:20, 4096:10, 16384:10},
+    tick_kimg_overrides     = {32:20, 64:10, 128:10},
     image_snapshot_ticks    = 4,
     network_snapshot_ticks  = 40,
     image_grid_type         = 'default',
@@ -158,8 +157,8 @@ def train_gan(
     gen_fn = theano.function([fake_latents_var, fake_labels_var], Gs.eval_nd(fake_latents_var, fake_labels_var, ignore_unused_inputs=True), on_unused_input='ignore')
 
     # Misc init.
-    resolution_log4 = int(np.round(np.log4(G.output_shape[2])))
-    initial_lod = max(resolution_log4 - int(np.round(np.log4(lod_initial_resolution))), 0)
+    resolution_log2 = int(np.round(np.log2(128)))
+    initial_lod = max(resolution_log2 - int(np.round(np.log2(lod_initial_resolution))), 0)
     cur_lod = 0.0
     min_lod, max_lod = -1.0, -2.0
     fake_score_avg = 0.0
@@ -201,7 +200,7 @@ def train_gan(
             cur_lod = max(cur_lod, 0.0)
 
         # Look up resolution-dependent parameters.
-        cur_res = 4 ** (resolution_log4 - int(np.floor(cur_lod)))
+        cur_res = 2 ** (resolution_log2 - int(np.floor(cur_lod)))
         minibatch_size = minibatch_overrides.get(cur_res, minibatch_default)
         tick_duration_kimg = tick_kimg_overrides.get(cur_res, tick_kimg_default)
 

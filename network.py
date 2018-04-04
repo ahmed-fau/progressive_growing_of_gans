@@ -448,6 +448,9 @@ def G_paper(
     tanh_at_end         = None,
     **kwargs):
 
+    use_pixelnorm = False
+    use_batchnorm = False
+
     R = int(np.log2(resolution))
     assert resolution == 2**R and resolution >= 4
     cur_lod = theano.shared(np.float32(0.0))
