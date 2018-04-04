@@ -22,8 +22,8 @@ import cPickle
 #----------------------------------------------------------------------------
 # Convenience.
 
-from lasagne.layers import InputLayer, Conv2DLayer, DenseLayer, NINLayer
-from lasagne.layers import Upscale2DLayer, Pool2DLayer, GlobalPoolLayer, MaxPool2DLayer
+from lasagne.layers import InputLayer, Conv1DLayer, DenseLayer, NINLayer
+from lasagne.layers import Upscale1DLayer, Pool1DLayer, GlobalPoolLayer, MaxPool2DLayer
 from lasagne.layers import ReshapeLayer, ElemwiseSumLayer, ConcatLayer, FlattenLayer
 from lasagne.layers import NonlinearityLayer, ScaleLayer
 
@@ -40,7 +40,7 @@ def Tsum    (*args, **kwargs): return T.sum (*args, dtype=theano.config.floatX, 
 def Tmean   (*args, **kwargs): return T.mean(*args, dtype=theano.config.floatX, acc_dtype=theano.config.floatX, **kwargs)
 def Tstd    (*args, **kwargs): return T.std (*args, **kwargs)
 def Tstdeps (val, **kwargs):   return T.sqrt(Tmean(T.square(val - Tmean(val, **kwargs)), **kwargs) + 1.0e-8)
-def Downscale2DLayer(incoming, scale_factor, **kwargs): return Pool2DLayer(incoming, pool_size=scale_factor, mode='average_exc_pad', **kwargs)
+def Downscale1DLayer(incoming, scale_factor, **kwargs): return Pool1DLayer(incoming, pool_size=scale_factor, mode='average_exc_pad', **kwargs)
 
 #----------------------------------------------------------------------------
 # Wrapper class for Lasagne networks for robust pickling.
@@ -466,15 +466,17 @@ def G_paper(
         input_layers += [InputLayer(name='Glabels', shape=[None, label_size])]
         net = ConcatLayer(name='Gina', incomings=[net, input_layers[-1]])
 
-    net = ReshapeLayer(name='Ginb', incoming=net, shape=[[0], [1], 1, 1])
-    net = PN(BN(WS(Conv2DLayer(net, name='G1a', num_filters=nf(1), filter_size=4, pad='full', nonlinearity=act, W=iact))))
-    net = PN(BN(WS(Conv2DLayer(net, name='G1b', num_filters=nf(1), filter_size=3, pad=1,      nonlinearity=act, W=iact))))
+    # TODO (cdonahue): see if PN/BS/WS are compatible with ndim==3
+
+    net = ReshapeLayer(name='Ginb', incoming=net, shape=[[0], [1], 1])
+    net = PN(BN(WS(Conv1DLayer(net, name='G1a', num_filters=nf(1), filter_size=16, pad='full', nonlinearity=act, W=iact))))
+    net = PN(BN(WS(Conv1DLayer(net, name='G1b', num_filters=nf(1), filter_size=9, pad=4,      nonlinearity=act, W=iact))))
     lods  = [net]
 
     for I in xrange(2, R): # I = 2, 3, ..., R-1
-        net = Upscale2DLayer(net, name='G%dup' % I, scale_factor=2)
-        net = PN(BN(WS(Conv2DLayer(net, name='G%da'  % I, num_filters=nf(I), filter_size=3, pad=1, nonlinearity=act, W=iact))))
-        net = PN(BN(WS(Conv2DLayer(net, name='G%db'  % I, num_filters=nf(I), filter_size=3, pad=1, nonlinearity=act, W=iact))))
+        net = Upscale1DLayer(net, name='G%dup' % I, scale_factor=4)
+        net = PN(BN(WS(Conv1DLayer(net, name='G%da'  % I, num_filters=nf(I), filter_size=9, pad=4, nonlinearity=act, W=iact))))
+        net = PN(BN(WS(Conv1DLayer(net, name='G%db'  % I, num_filters=nf(I), filter_size=9, pad=4, nonlinearity=act, W=iact))))
         lods += [net]
 
     lods = [WS(NINLayer(l, name='Glod%d' % i, num_units=num_channels, nonlinearity=linear, W=ilinear)) for i, l in enumerate(reversed(lods))]
@@ -483,6 +485,7 @@ def G_paper(
         output_layer = NonlinearityLayer(output_layer, name='Gtanh', nonlinearity=tanh)
         if tanh_at_end != 1.0:
             output_layer = non_trainable(ScaleLayer(output_layer, name='Gtanhs', scales=lasagne.init.Constant(tanh_at_end)))
+
     return dict(input_layers=input_layers, output_layers=[output_layer], cur_lod=cur_lod)
 
 #----------------------------------------------------------------------------
@@ -512,22 +515,22 @@ def D_paper(
     def LN(layer): return LayerNormLayer(layer, name=layer.name+'ln') if use_layernorm else layer
     def WS(layer): return WScaleLayer(layer, name=layer.name+'ws') if use_wscale else layer
 
-    input_layer = InputLayer(name='Dimages', shape=[None, num_channels, 2**R, 2**R])
+    input_layer = InputLayer(name='Dimages', shape=[None, num_channels, 4**R])
     net = WS(NINLayer(input_layer, name='D%dx' % (R-1), num_units=nf(R-1), nonlinearity=lrelu, W=ilrelu))
 
     for I in xrange(R-1, 1, -1): # I = R-1, R-2, ..., 2
-        net = LN(WS(Conv2DLayer     (GD(net),     name='D%db'   % I, num_filters=nf(I),   filter_size=3, pad=1, nonlinearity=lrelu, W=ilrelu)))
-        net = LN(WS(Conv2DLayer     (GD(net),     name='D%da'   % I, num_filters=nf(I-1), filter_size=3, pad=1, nonlinearity=lrelu, W=ilrelu)))
-        net =       Downscale2DLayer(net,         name='D%ddn'  % I, scale_factor=2)
-        lod =       Downscale2DLayer(input_layer, name='D%dxs'  % (I-1), scale_factor=2**(R-I))
+        net = LN(WS(Conv1DLayer     (GD(net),     name='D%db'   % I, num_filters=nf(I),   filter_size=9, pad=4, nonlinearity=lrelu, W=ilrelu)))
+        net = LN(WS(Conv1DLayer     (GD(net),     name='D%da'   % I, num_filters=nf(I-1), filter_size=9, pad=4, nonlinearity=lrelu, W=ilrelu)))
+        net =       Downscale1DLayer(net,         name='D%ddn'  % I, scale_factor=4)
+        lod =       Downscale1DLayer(input_layer, name='D%dxs'  % (I-1), scale_factor=4**(R-I))
         lod =    WS(NINLayer        (lod,         name='D%dx'   % (I-1), num_units=nf(I-1), nonlinearity=lrelu, W=ilrelu))
         net =       LODSelectLayer  (             name='D%dlod' % (I-1), incomings=[net, lod], cur_lod=cur_lod, first_incoming_lod=R-I-1)
 
     if mbstat_avg is not None:
         net = MinibatchStatConcatLayer(net, name='Dstat', func=globals()[mbstat_func], averaging=mbstat_avg)
 
-    net = LN(WS(Conv2DLayer(GD(net), name='D1b', num_filters=nf(1), filter_size=3, pad=1, nonlinearity=lrelu, W=ilrelu)))
-    net = LN(WS(Conv2DLayer(GD(net), name='D1a', num_filters=nf(0), filter_size=4, pad=0, nonlinearity=lrelu, W=ilrelu)))
+    net = LN(WS(Conv1DLayer(GD(net), name='D1b', num_filters=nf(1), filter_size=9, pad=4, nonlinearity=lrelu, W=ilrelu)))
+    net = LN(WS(Conv1DLayer(GD(net), name='D1a', num_filters=nf(0), filter_size=9, pad=4, nonlinearity=lrelu, W=ilrelu)))
 
     if mbdisc_kernels:
         import minibatch_discrimination
@@ -577,9 +580,12 @@ def G_mnist_mode_recovery(
     net = ReshapeLayer(name='Ginb', incoming=net, shape=[[0], [1], 1, 1])
     net = PN(BN(WS(Conv2DLayer(net, name='G1a', num_filters=64, filter_size=4, pad='full', nonlinearity=vlrelu, W=irelu))))
 
+    print net.output_shape
+    print '-' * 1000
+
     lods  = [net]
     for I in xrange(2, R): # I = 2, 3, ..., R-1
-        net = Upscale2DLayer(net, name='G%dup' % I, scale_factor=2)
+        net = Upscale1DLayer(net, name='G%dup' % I, scale_factor=2)
         net = PN(BN(WS(Conv2DLayer(net, name='G%da'  % I, num_filters=nf(I-1), filter_size=3, pad=1, nonlinearity=vlrelu, W=irelu))))
         lods += [net]
 
